@@ -1,121 +1,125 @@
 import streamlit as st
 from deep_translator import GoogleTranslator
-import time
 
 # ページ設定
 st.set_page_config(
     page_title="Google翻訳ツール",
     page_icon="🌐",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# タイトルとヘッダー
+# セッション状態の初期化（言語入れ替えと結果保持のため）
+if 'source_lang_index' not in st.session_state:
+    st.session_state.source_lang_index = 0  # デフォルト: 自動検出
+if 'target_lang_index' not in st.session_state:
+    st.session_state.target_lang_index = 1  # デフォルト: 日本語（後で調整）
+if 'translated_text' not in st.session_state:
+    st.session_state.translated_text = ""
+
+# タイトル
 st.title("🌐 Google翻訳ツール")
 st.markdown("---")
 
-# サイドバーで言語リストを読み込む
+# 言語リストの取得
 @st.cache_resource
 def get_supported_languages():
-    """サポートされている言語を取得する"""
     try:
         translator = GoogleTranslator()
         langs_dict = translator.get_supported_languages(as_dict=True)
-        # 'auto' オプションを追加
-        langs_dict = {"自動検出 (auto)": "auto", **langs_dict}
-        return langs_dict
-    except Exception as e:
-        st.error(f"言語リストの取得に失敗しました: {e}")
-        return {"自動検出 (auto)": "auto", "English": "en", "日本語": "ja"}
+        # 'auto' を先頭に追加
+        return {"自動検出 (auto)": "auto", **langs_dict}
+    except Exception:
+        return {"自動検出 (auto)": "auto", "english": "en", "japanese": "ja"}
 
-# 言語リストを取得
 supported_languages = get_supported_languages()
 lang_names = list(supported_languages.keys())
-lang_codes = list(supported_languages.values())
 
-# レイアウト: 2列構成
-col1, col2 = st.columns(2)
+# 日本語の初期インデックスを探す
+if 'first_run' not in st.session_state:
+    try:
+        st.session_state.target_lang_index = lang_names.index("japanese")
+    except ValueError:
+        st.session_state.target_lang_index = 1
+    st.session_state.first_run = False
 
-with col1:
+# 言語入れ替え関数
+def swap_languages():
+    # 自動検出(index 0)の場合は入れ替えを制限するか、固定言語にする
+    current_source = st.session_state.source_lang_index
+    current_target = st.session_state.target_lang_index
+    
+    # 入れ替え実行
+    st.session_state.source_lang_index = current_target
+    st.session_state.target_lang_index = current_source
+
+# レイアウト: 2列
+col_input, col_output = st.columns(2)
+
+with col_input:
     st.subheader("📝 翻訳元テキスト")
     input_text = st.text_area(
-        "翻訳したいテキストを入力してください",
-        height=200,
+        "入力",
+        height=250,
+        placeholder="翻訳したい文章を入力してください...",
         label_visibility="collapsed"
     )
 
-with col2:
+with col_output:
     st.subheader("✨ 翻訳結果")
-    output_text = st.text_area(
-        "翻訳結果がここに表示されます",
-        height=200,
+    st.text_area(
+        "結果",
+        value=st.session_state.translated_text,
+        height=250,
         disabled=True,
-        label_visibility="collapsed",
-        key="output_area"
+        label_visibility="collapsed"
     )
 
-# 言語選択部分
+# 言語選択とアクション
 st.markdown("---")
-col1, col2, col3 = st.columns([1, 1, 1])
+c1, c2, c3, c4 = st.columns([2, 0.5, 2, 1.5])
 
-with col1:
-    st.markdown("**元言語**")
+with c1:
     source_lang_name = st.selectbox(
-        "元言語を選択",
+        "元言語",
         lang_names,
-        index=0,
-        label_visibility="collapsed"
+        key="source_lang_index"
     )
-    source_lang_code = supported_languages[source_lang_name]
 
-with col2:
-    st.markdown("**翻訳先言語**")
+with c2:
+    st.markdown("<br>", unsafe_allow_html=True) # 位置調整
+    st.button("⇄", on_click=swap_languages, help="言語を入れ替える", use_container_width=True)
+
+with c3:
     target_lang_name = st.selectbox(
-        "翻訳先言語を選択",
+        "翻訳先言語",
         lang_names,
-        index=lang_codes.index("ja") if "ja" in lang_codes else 1,
-        label_visibility="collapsed"
+        key="target_lang_index"
     )
-    target_lang_code = supported_languages[target_lang_name]
 
-with col3:
-    st.markdown("**アクション**")
-    translate_button = st.button("🚀 翻訳実行", use_container_width=True)
+with c4:
+    st.markdown("<br>", unsafe_allow_html=True) # 位置調整
+    translate_button = st.button("🚀 翻訳実行", use_container_width=True, type="primary")
 
-# 翻訳処理
+# 翻訳ロジック
 if translate_button:
     if not input_text.strip():
-        st.warning("翻訳するテキストを入力してください。")
+        st.warning("テキストを入力してください")
     else:
         try:
             with st.spinner("翻訳中..."):
-                translator = GoogleTranslator(source=source_lang_code, target=target_lang_code)
+                source_code = supported_languages[source_lang_name]
+                target_code = supported_languages[target_lang_name]
+                
+                translator = GoogleTranslator(source=source_code, target=target_code)
                 result = translator.translate(input_text)
                 
-                # 結果を表示
-                st.success("翻訳完了！")
-                st.text_area(
-                    "翻訳結果",
-                    value=result,
-                    height=200,
-                    disabled=True,
-                    label_visibility="collapsed"
-                )
+                # セッション状態を更新して再描画
+                st.session_state.translated_text = result
+                st.rerun()
                 
         except Exception as e:
-            st.error(f"翻訳エラーが発生しました: {e}")
+            st.error(f"エラーが発生しました: {e}")
 
 # フッター
 st.markdown("---")
-st.markdown("""
-### 使い方
-1. 左側のテキストエリアに翻訳したいテキストを入力します
-2. 元言語と翻訳先言語を選択します
-3. **翻訳実行** ボタンをクリックします
-4. 右側に翻訳結果が表示されます
-
-### 注意事項
-- このツールは `deep-translator` ライブラリを利用しており、無料で利用できます
-- 短時間に大量のリクエストを送信するとIP制限を受ける可能性があります
-- 大量の翻訳が必要な場合は、Google Cloud Translation APIなどの公式サービスの利用を検討してください
-""")
+st.caption("Powered by deep-translator & Streamlit")
