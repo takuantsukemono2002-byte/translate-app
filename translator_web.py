@@ -6,7 +6,7 @@ import io
 
 # ページ設定
 st.set_page_config(
-    page_title="翻訳ツール Pro",
+    page_title="翻訳ツール",
     page_icon="🌐",
     layout="centered"
 )
